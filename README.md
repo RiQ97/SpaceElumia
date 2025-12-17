@@ -6,7 +6,7 @@
 
 **Space Elumia** is a high-octane, vertically scrolling arcade space shooter that brings the classic "bullet hell" experience directly to your browser. No downloads, no installations, just pure action.
 
-![Game Banner](https://via.placeholder.com/800x200?text=Space+Elumia+Banner)
+![Game Banner](./banner.png)
 
 > **"All Systems Secured. Galaxy Safe."**
 
