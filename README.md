@@ -13,10 +13,11 @@
 ## ✨ Features
 
 *   **Zero Installation**: Runs entirely in a single HTML file. Just download and play!
-*   **Epic Boss Battles**: Face off against massive, evolving bosses like *The Watcher* and *The Kraken*, each with unique attack patterns.
+*   **Epic Boss Battles**: Face off against 5 distinct boss phases: *The Watcher*, *The Kraken*, *The Hive*, *The Devourer*, and *The Seraphim*.
+*   **Hard Mode**: Test your skills with the new difficulty toggle (4x Boss HP).
 *   **Dynamic Weapon System**: Upgrade your arsenal with Spread Shots, Lasers, Wave Cannons, and Plasma Bolts.
 *   **High-End Visuals**: Experience 60FPS action with smooth particle effects, screen shake, and "shine" impact visuals.
-*   **Local Leaderboard**: compete against yourself and friends with a persistent high-score system.
+*   **Local Leaderboard**: Compete against yourself with a persistent high-score system.
 *   **Immersive Audio**: Custom-synthesized sound effects powered by the Web Audio API.
 
 ## 🎮 How to Play (No Install Needed!)
@@ -38,11 +39,17 @@ That's it! The game runs completely offline.
 | **Pause** | `P` | Pause the mission |
 | **Missiles** | `M` (when acquired) | Fire auto-targeting missiles |
 
+*> Tip: Use the on-screen "HARD" button to toggle Hard Mode for extra challenge!*
+
 ## 🏆 Scoring
 
 *   **Fighter**: 100 pts
+*   **Drone**: 150 pts
 *   **Interceptor**: 250 pts
+*   **Stealth**: 300 pts
 *   **Tank**: 400 pts
+*   **Turret**: 500 pts
+*   **Bomber**: 600 pts
 *   **Bosses**: 5000 x Level pts
 
 Good luck, Pilot. The galaxy is counting on you.
