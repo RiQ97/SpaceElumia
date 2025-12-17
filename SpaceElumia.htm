@@ -210,11 +210,11 @@
                     osc.stop(t + 0.15);
                     break;
                 case 'missile':
-                    osc.type = 'square'; // "Chunky" sound
-                    osc.frequency.setValueAtTime(300, t);
-                    osc.frequency.exponentialRampToValueAtTime(50, t + 0.4); // Pitch drop (Launch thud)
-                    gain.gain.setValueAtTime(0.15, t);
-                    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+                    osc.type = 'sine'; // Gentle "tech" sound
+                    osc.frequency.setValueAtTime(600, t);
+                    osc.frequency.exponentialRampToValueAtTime(150, t + 0.4); // Soft "pheiw"
+                    gain.gain.setValueAtTime(0.1, t);
+                    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
                     osc.start(t);
                     osc.stop(t + 0.4);
                     break;
@@ -269,9 +269,11 @@
             const [hudAutoFire, setHudAutoFire] = useState(false);
             const [hudHasMissiles, setHudHasMissiles] = useState(false);
             const [isMuted, setIsMuted] = useState(false);
+            const [isHardMode, setIsHardMode] = useState(false);
             const [playerName, setPlayerName] = useState('YOU');
             const [leaderboard, setLeaderboard] = useState([]);
             const [showLeaderboard, setShowLeaderboard] = useState(false);
+            const [pendingHardMode, setPendingHardMode] = useState(null);
 
             // Mutable game state
             const state = useRef({
@@ -369,7 +371,8 @@
                 s.enemies = [];
 
                 const baseHp = s.level === 1 ? 80 : 150;
-                const maxHp = baseHp + (s.level * 90);
+                const multiplier = isHardMode ? 4 : 1;
+                const maxHp = (baseHp + (s.level * 90)) * multiplier;
 
                 const baseSize = 260 + (s.level * 20); // Much bigger for all levels
 
@@ -383,7 +386,7 @@
                     vx: -0.5, vy: 0, hp: maxHp, maxHp: maxHp,
                     scoreValue: 5000 * s.level,
                     hasDrop: true, isBoss: true, attackTimer: 0,
-                    phase: (s.level - 1) % 4,
+                    phase: (s.level - 1) % 5,
                     // New Movement Props
                     moveTimer: 0,
                     targetY: CANVAS_HEIGHT / 2
@@ -486,8 +489,28 @@
 
             const togglePause = useCallback(() => {
                 if (gameState === 'playing') setGameState('paused');
-                else if (gameState === 'paused') setGameState('playing');
+                else if (gameState === 'paused') {
+                    setGameState('playing');
+                    setPendingHardMode(null); // Clear pending change on resume
+                }
             }, [gameState]);
+
+            const handleHardModeClick = () => {
+                if (gameState === 'playing') {
+                    setPendingHardMode(!isHardMode);
+                    setGameState('paused');
+                } else {
+                    setIsHardMode(!isHardMode);
+                }
+            };
+
+            const handleAbort = () => {
+                if (pendingHardMode !== null) {
+                    setIsHardMode(pendingHardMode);
+                    setPendingHardMode(null);
+                }
+                setGameState('start');
+            };
 
             const update = () => {
                 if (gameState !== 'playing') return;
@@ -583,7 +606,7 @@
                     } else if (s.player.weaponLevel === 3) { // Laser
                         s.bullets.push({
                             x: s.player.x + 20, y: s.player.y, w: 40, h: 6,
-                            vx: laserSpeed, vy: 0, owner: 'player', damage: 5, isLaser: true, ttl: 100
+                            vx: laserSpeed, vy: 0, owner: 'player', damage: 4, isLaser: true, ttl: 100
                         });
                     } else if (s.player.weaponLevel === 4) { // Wave
                         s.bullets.push({
@@ -593,7 +616,7 @@
                     } else if (s.player.weaponLevel === 5) { // Plasma
                         s.bullets.push({
                             x: s.player.x + 20, y: s.player.y, w: 20, h: 20,
-                            vx: 12, vy: 0, owner: 'player', damage: 8, isPlasma: true, ttl: 100
+                            vx: 12, vy: 0, owner: 'player', damage: 6, isPlasma: true, ttl: 100
                         });
                     } else { // Normal & Rapid
                         s.bullets.push({
@@ -648,7 +671,7 @@
 
                 // Spawning Enemies / Boss Check code by ritik raj
                 if (!s.bossActive) {
-                    const threshold = 15;
+                    const threshold = isHardMode ? 80 : 40;
                     if (s.frames % 15 === 0) setBossProgress(Math.min(100, (s.levelProgress / threshold) * 100));
 
                     const spawnRate = Math.max(15, 25 - s.level * 3);
@@ -774,6 +797,18 @@
                         }
                     }
 
+                    // Beam Collision (Continuous Damage)
+                    if (b.isBeam && checkCollision(s.player, b)) {
+                        if (s.player.invincibleTimer <= 0) {
+                            s.player.hp -= 30; // Massive Damage
+                            s.player.invincibleTimer = 60;
+                            s.shake = 15;
+                            playSound('hit');
+                            addParticles(s.player.x, s.player.y, '#ff0000', 15);
+                        }
+                    }
+
+
                     if (b.isBomb && b.ttl <= 10) {
                         for (let k = 0; k < 8; k++) {
                             const angle = (Math.PI * 2 / 8) * k;
@@ -789,7 +824,9 @@
                         continue;
                     }
 
-                    if (b.x > CANVAS_WIDTH + 50 || b.x < -50 || b.y > CANVAS_HEIGHT + 50 || b.y < -50 || b.ttl <= 0) {
+                    if (!b.isBeam && (b.x > CANVAS_WIDTH + 50 || b.x < -50 || b.y > CANVAS_HEIGHT + 50 || b.y < -50 || b.ttl <= 0)) {
+                        s.bullets.splice(i, 1);
+                    } else if (b.isBeam && b.ttl <= 0) {
                         s.bullets.splice(i, 1);
                     }
                 }
@@ -810,7 +847,16 @@
                     } else if (e.type === 'boss') {
                         // Boss Movement Logic
                         const targetX = CANVAS_WIDTH - 200;
-                        if (e.x > targetX) {
+
+                        // State: Charge/Fire (Freeze Movement)
+                        if (e.isCharging || e.isFiring) {
+                            e.vx = 0; e.vy = 0;
+                            // Vibrating "Power Up" effect
+                            if (e.isCharging) {
+                                e.x += (Math.random() - 0.5) * 2;
+                                e.y += (Math.random() - 0.5) * 2;
+                            }
+                        } else if (e.x > targetX) {
                             e.vx = -2; e.vy = 0;
                         } else {
                             e.vx = 0; e.x = targetX;
@@ -863,6 +909,44 @@
                                 s.bullets.push({ x: e.x, y: e.y, w: 8, h: 8, vx: Math.cos(a) * 6, vy: Math.sin(a) * 6, owner: 'enemy', damage: 12, ttl: 200 });
                             }
                             playSound('explosion');
+                        }
+
+                        if (s.level >= 5) {
+                            // JUDGEMENT RAY (State Machine)
+
+                            // 1. Trigger Charge
+                            if (!e.isCharging && !e.isFiring && e.attackTimer % 600 === 0) {
+                                e.isCharging = true;
+                                e.chargeTimer = 90; // 1.5 Seconds Channeling
+                                playSound('boss_spawn'); // Buildup sound
+                            }
+
+                            // 2. Charging State
+                            if (e.isCharging) {
+                                e.chargeTimer--;
+                                if (e.chargeTimer <= 0) {
+                                    e.isCharging = false;
+                                    e.isFiring = true;
+                                    e.fireTimer = 180; // 3 Seconds Firing
+
+                                    // Spawn Massive Beam
+                                    s.bullets.push({
+                                        x: e.x - 2000, y: e.y, w: 2000, h: 40,
+                                        vx: 0, vy: 0,
+                                        owner: 'enemy', damage: 30, ttl: 180, // Match fireTimer
+                                        isBeam: true
+                                    });
+                                    playSound('explosion');
+                                }
+                            }
+
+                            // 3. Firing State
+                            if (e.isFiring) {
+                                e.fireTimer--;
+                                if (e.fireTimer <= 0) {
+                                    e.isFiring = false;
+                                }
+                            }
                         }
                     }
 
@@ -1127,7 +1211,7 @@
                     }
 
                     if (e.isBoss) {
-                        const phase = e.phase !== undefined ? e.phase : (s.level - 1) % 4;
+                        const phase = e.phase !== undefined ? e.phase : (s.level - 1) % 5;
 
                         // Common Boss Glow
                         const pulse = Math.sin(s.frames * 0.1) * 5;
@@ -1199,7 +1283,7 @@
                                 ctx.beginPath(); ctx.arc(px, py, 5 + Math.random() * 5, 0, Math.PI * 2); ctx.fill();
                             }
 
-                        } else {
+                        } else if (phase === 3) {
                             // Phase 3: THE DEVOURER (Maw)
                             ctx.fillStyle = '#450a0a';
                             ctx.beginPath(); ctx.arc(0, 0, e.w / 2, 0, Math.PI * 2); ctx.fill();
@@ -1217,113 +1301,197 @@
                             // Void
                             ctx.fillStyle = '#000';
                             ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill();
+
+                        } else {
+                            // Phase 4: THE SERAPHIM (Celestial Construct)
+                            
+                            // CHARGE EFFECT
+                            if (e.isCharging) {
+                                ctx.save();
+                                ctx.globalCompositeOperation = 'lighter';
+                                ctx.strokeStyle = `rgba(255, 255, 255, ${Math.random()})`;
+                                ctx.lineWidth = 3;
+                                // Imploding Lines (Scaled 2.5x)
+                                for (let k = 0; k < 12; k++) {
+                                    const dist = 150 + (Math.sin(s.frames * 0.5 + k) * 50); 
+                                    const ang = (Math.PI * 2 / 12) * k - s.frames * 0.1;
+                                    ctx.beginPath();
+                                    ctx.moveTo(Math.cos(ang) * dist, Math.sin(ang) * dist);
+                                    ctx.lineTo(0, 0);
+                                    ctx.stroke();
+                                }
+                                // Gathering Sphere (Scaled 2.5x)
+                                ctx.fillStyle = `rgba(255, 200, 0, 0.3)`;
+                                ctx.beginPath(); ctx.arc(0, 0, 100 + Math.sin(s.frames) * 12, 0, Math.PI * 2); ctx.fill();
+                                ctx.restore();
+                            }
+
+                            // Rotating Golden Rings (Scaled 2.5x)
+                            const ringSpeed = e.isCharging ? 0.2 : 0.05;
+                            ctx.save();
+                            ctx.strokeStyle = '#fcd34d'; ctx.lineWidth = 6;
+                            for (let i = 0; i < 3; i++) {
+                                ctx.beginPath();
+                                ctx.ellipse(0, 0, 150 - i * 25, 50 + Math.sin(s.frames * ringSpeed + i) * 25, s.frames * (ringSpeed/2) * (i % 2 == 0 ? 1 : -1), 0, Math.PI * 2);
+                                ctx.stroke();
+                            }
+                            ctx.restore();
+
+                            // Central Core (Scaled 2.5x)
+                            ctx.fillStyle = e.isCharging ? '#fff' : '#fff';
+                            ctx.shadowColor = e.isCharging ? '#ffffff' : '#fbbf24'; 
+                            ctx.shadowBlur = e.isCharging ? 100 + Math.random() * 40 : 60;
+                            ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.fill();
+
+                            // Radiant Wings (Scaled 2.5x)
+                            ctx.shadowBlur = 20;
+                            ctx.fillStyle = '#fbbf24';
+                            for (let i = 0; i < 6; i++) {
+                                const a = (Math.PI * 2 / 6) * i + s.frames * 0.01;
+                                ctx.beginPath();
+                                ctx.moveTo(0, 0);
+                                ctx.lineTo(Math.cos(a) * 200, Math.sin(a) * 200);
+                                ctx.lineTo(Math.cos(a + 0.2) * 150, Math.sin(a + 0.2) * 150);
+                                ctx.fill();
+                            }
                         }
                         ctx.shadowBlur = 0;
 
                     } else if (e.type === 'fighter') {
-                        // Detailed Fighter
-                        ctx.fillStyle = '#f97316'; // Orange hull
+                        // NEW: "Manta Ray" Open Shape (Flipped)
+                        ctx.save();
+                        ctx.scale(-1, 1);
+                        ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.moveTo(15, 0); ctx.lineTo(-10, -10); ctx.lineTo(-5, 0); ctx.lineTo(-10, 10);
-                        ctx.closePath(); ctx.fill();
-                        if (e.hasDrop) drawShine(e.w, e.h);
-
-                        ctx.fillStyle = '#c2410c'; // Darker detail
-                        ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(-15, -6); ctx.lineTo(-15, 6); ctx.fill();
-
-                        // Engine glow
-                        ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 5;
-                        ctx.fillStyle = '#fff';
-                        ctx.fillRect(-16, -2, 4, 4);
-                        ctx.shadowBlur = 0;
+                        ctx.moveTo(15, 0);
+                        ctx.quadraticCurveTo(0, -10, -10, -15); // Wing curve top
+                        ctx.lineTo(-5, 0);
+                        ctx.lineTo(-10, 15); // Wing curve bottom
+                        ctx.quadraticCurveTo(0, 10, 15, 0);
+                        ctx.stroke();
+                        // Core
+                        ctx.fillStyle = '#60a5fa';
+                        ctx.beginPath(); ctx.arc(-2, 0, 3, 0, Math.PI * 2); ctx.fill();
+                        if (e.hasDrop) drawShine(20, 20);
+                        ctx.restore();
 
                     } else if (e.type === 'drone') {
-                        // Rotating Ring Drone
+                        // NEW: "C" Shape Rotating with Gap
                         ctx.save();
                         ctx.rotate(s.frames * 0.1);
                         ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 3;
-                        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.stroke();
-                        // Cutout
-                        ctx.clearRect(-5, -15, 10, 5);
-                        if (e.hasDrop) drawShine(e.w, e.h);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 12, 0.5, Math.PI * 1.8); // Open circle
+                        ctx.stroke();
                         ctx.restore();
-
-                        ctx.fillStyle = '#4b5563';
-                        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
-                        ctx.fillStyle = '#ef4444'; // Eye
-                        ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fill();
+                        // Floating bits
+                        ctx.fillStyle = '#ef4444';
+                        ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+                        if (e.hasDrop) drawShine(20, 20);
 
                     } else if (e.type === 'tank') {
-                        // Heavy Tank
+                        // NEW: "Spider/Walker" Tank (Organic-Mech)
                         ctx.fillStyle = '#166534';
-                        ctx.fillRect(-20, -15, 40, 30); // Body
-                        if (e.hasDrop) drawShine(40, 30, true);
-
-                        ctx.fillStyle = '#14532d'; // Treads
-                        ctx.fillRect(-22, -18, 44, 6);
-                        ctx.fillRect(-22, 12, 44, 6);
-                        for (let i = 0; i < 5; i++) {
-                            ctx.fillStyle = '#000';
-                            ctx.fillRect(-18 + i * 8, -18, 2, 6);
-                            ctx.fillRect(-18 + i * 8, 12, 2, 6);
+                        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill(); // Body
+                        // Legs
+                        ctx.strokeStyle = '#14532d'; ctx.lineWidth = 3;
+                        const legOffset = Math.sin(s.frames * 0.1) * 3;
+                        for (let i = 0; i < 4; i++) {
+                            const angle = (Math.PI / 4) + (Math.PI / 2) * i;
+                            ctx.beginPath();
+                            ctx.moveTo(Math.cos(angle) * 10, Math.sin(angle) * 10);
+                            ctx.lineTo(Math.cos(angle) * 22, Math.sin(angle) * 22 + legOffset * (i % 2 === 0 ? 1 : -1));
+                            ctx.stroke();
                         }
-
-                        ctx.fillStyle = '#22c55e'; // Turret
-                        ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
-                        ctx.fillRect(0, -3, 25, 6); // Barrel
+                        // Cannon
+                        ctx.fillStyle = '#22c55e';
+                        ctx.beginPath(); ctx.arc(0, -5, 6, 0, Math.PI * 2); ctx.fill();
+                        if (e.hasDrop) drawShine(30, 30);
 
                     } else if (e.type === 'kamikaze') {
-                        // Spiked Mine
+                        // Approved Design
+                        ctx.fillStyle = '#991b1b';
+                        ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
                         ctx.fillStyle = '#ef4444';
-                        ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
-                        if (e.hasDrop) drawShine(16, 16);
-                        ctx.strokeStyle = '#b91c1c';
-                        ctx.lineWidth = 2;
-                        for (let k = 0; k < 6; k++) {
-                            const a = (Math.PI * 2 / 6) * k + s.frames * 0.2;
-                            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 14, Math.sin(a) * 14); ctx.stroke();
+                        for (let k = 0; k < 8; k++) {
+                            const a = s.frames * 0.05 + (Math.PI / 4) * k;
+                            ctx.beginPath();
+                            ctx.moveTo(Math.cos(a) * 10, Math.sin(a) * 10);
+                            ctx.lineTo(Math.cos(a) * 18, Math.sin(a) * 18);
+                            ctx.lineTo(Math.cos(a + 0.1) * 10, Math.sin(a + 0.1) * 10);
+                            ctx.fill();
                         }
+                        ctx.fillStyle = `rgba(255, 100, 100, ${0.5 + Math.sin(s.frames * 0.2) * 0.5})`;
+                        ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+                        if (e.hasDrop) drawShine(20, 20);
 
                     } else if (e.type === 'interceptor') {
-                        // Speedster
-                        ctx.fillStyle = '#db2777';
+                        // NEW: "Lightning" / Zig-zag (Flipped)
+                        ctx.save();
+                        ctx.scale(-1, 1);
+                        ctx.strokeStyle = '#d946ef'; ctx.lineWidth = 3;
                         ctx.beginPath();
-                        ctx.moveTo(20, 0); ctx.lineTo(-10, -8); ctx.lineTo(-5, 0); ctx.lineTo(-10, 8);
+                        ctx.moveTo(20, 0);
+                        ctx.lineTo(-5, -8);
+                        ctx.lineTo(0, 0);
+                        ctx.lineTo(-5, 8);
+                        ctx.closePath();
+                        ctx.stroke();
+                        ctx.fillStyle = '#f0abfc';
                         ctx.fill();
-                        if (e.hasDrop) drawShine(e.w, e.h);
-                        ctx.fillStyle = '#be185d'; // Stripe
-                        ctx.fillRect(-5, -1, 20, 2);
+                        if (e.hasDrop) drawShine(20, 20);
+                        ctx.restore();
 
                     } else if (e.type === 'turret') {
-                        // Stationary Turret
-                        ctx.fillStyle = '#374151';
-                        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill();
-                        if (e.hasDrop) drawShine(36, 36);
-                        ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 4; ctx.stroke();
-                        // Cross
+                        // Approved Design
+                        ctx.fillStyle = '#4b5563';
+                        ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2); ctx.fill();
+                        ctx.save();
+                        ctx.rotate(Math.sin(s.frames * 0.05));
+                        ctx.fillStyle = '#1f2937';
+                        ctx.fillRect(-10, -10, 20, 20);
                         ctx.fillStyle = '#ef4444';
-                        ctx.fillRect(-20, -4, 40, 8);
-                        ctx.fillRect(-4, -20, 8, 40);
+                        ctx.fillRect(-25, -6, 20, 4);
+                        ctx.fillRect(-25, 2, 20, 4);
+                        ctx.restore();
+                        ctx.fillStyle = '#ef4444';
+                        ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+                        if (e.hasDrop) drawShine(30, 30);
 
                     } else if (e.type === 'stealth') {
-                        // Stealth Bomber
-                        ctx.fillStyle = '#1f2937';
+                        // Approved Design (Flipped)
+                        ctx.save();
+                        ctx.scale(-1, 1);
+                        ctx.fillStyle = '#0f172a';
                         ctx.beginPath();
-                        ctx.moveTo(15, 0); ctx.lineTo(-10, -15); ctx.lineTo(-5, 0); ctx.lineTo(-10, 15);
+                        ctx.moveTo(20, 0); ctx.lineTo(-15, -20); ctx.lineTo(-5, 0); ctx.lineTo(-15, 20);
                         ctx.fill();
-                        if (e.hasDrop) drawShine(e.w, e.h);
-                        ctx.strokeStyle = '#374151'; ctx.stroke();
+                        ctx.strokeStyle = '#334155'; ctx.lineWidth = 1; ctx.stroke();
+                        if (e.hasDrop) drawShine(20, 20);
+                        ctx.restore();
 
                     } else if (e.type === 'bomber') {
-                        // Heavy Bomber
-                        ctx.fillStyle = '#78350f';
-                        ctx.fillRect(-25, -15, 50, 30);
-                        if (e.hasDrop) drawShine(50, 30, true);
-                        ctx.fillStyle = '#92400e';
-                        ctx.fillRect(-20, -5, 40, 10); // Bay
-                        ctx.fillStyle = '#f59e0b'; // Light
-                        ctx.beginPath(); ctx.arc(-15, -10, 3, 0, Math.PI * 2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(-15, 10, 3, 0, Math.PI * 2); ctx.fill();
+                        // NEW: "Hollow Core" Carrier (Flipped)
+                        ctx.save();
+                        ctx.scale(-1, 1);
+                        ctx.strokeStyle = '#78350f'; ctx.lineWidth = 4;
+                        ctx.beginPath();
+                        ctx.moveTo(25, -15);
+                        ctx.lineTo(-25, -15);
+                        ctx.lineTo(-25, 15);
+                        ctx.lineTo(25, 15);
+                        ctx.stroke();
+
+                        // Center Payload
+                        ctx.fillStyle = '#b45309';
+                        ctx.fillRect(-15, -5, 30, 10);
+
+                        // Engine Glows
+                        ctx.fillStyle = '#f59e0b';
+                        ctx.beginPath(); ctx.arc(-28, -15, 3, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(-28, 15, 3, 0, Math.PI * 2); ctx.fill();
+                        if (e.hasDrop) drawShine(40, 30, true);
+                        ctx.restore();
 
                     } else {
                         // Fallback
@@ -1352,6 +1520,41 @@
 
                 // Bullets
                 s.bullets.forEach(b => {
+                    if (b.isBeam) {
+                        // MODERN JUDGEMENT RAY
+                        ctx.save();
+
+                        // Pulse Effect
+                        const pulse = Math.sin(s.frames * 0.8) * 0.2 + 1; // 0.8 to 1.2
+                        const beamHeight = b.h * pulse;
+
+                        // Set Blend Mode for "Energy" look
+                        ctx.globalCompositeOperation = 'lighter';
+
+                        // 1. Outer Glow (Wide and Faint)
+                        const gradGlow = ctx.createLinearGradient(0, b.y - beamHeight * 2, 0, b.y + beamHeight * 2);
+                        gradGlow.addColorStop(0, 'rgba(255, 160, 0, 0)');
+                        gradGlow.addColorStop(0.5, 'rgba(255, 160, 0, 0.5)'); // Orange/Gold
+                        gradGlow.addColorStop(1, 'rgba(255, 160, 0, 0)');
+
+                        ctx.fillStyle = gradGlow;
+                        ctx.fillRect(b.x, b.y - beamHeight * 2, b.w, beamHeight * 4);
+
+                        // 2. Main Beam (Solid Gold)
+                        ctx.fillStyle = 'rgba(255, 200, 0, 0.8)';
+                        ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 20;
+                        ctx.fillRect(b.x, b.y - beamHeight / 2, b.w, beamHeight);
+
+                        // 3. Core (White Hot Electric)
+                        ctx.fillStyle = '#ffffff';
+                        ctx.shadowBlur = 0;
+                        const coreHeight = beamHeight * 0.3 + Math.random() * 4; // Electric flicker
+                        ctx.fillRect(b.x, b.y - coreHeight / 2, b.w, coreHeight);
+
+                        ctx.restore();
+                        return; // Skip other rendering
+                    }
+
                     if (b.isMissile) {
                         // Missile Shape (Mark II)
                         const angle = Math.atan2(b.vy, b.vx);
@@ -1571,37 +1774,44 @@
                                     </div>
                                 </div>
 
-                                {/* RIGHT: Controls & Dash */}
-                                <div className="flex gap-6 items-start">
-                                    <div className="flex flex-col items-end gap-1">
+                                {/* RIGHT: Controls & Dash & Stats Unified */}
+                                <div className="flex flex-col items-end gap-3 pointer-events-auto">
+                                    {/* ROW 1: Dash & Lives */}
+                                    <div className="flex items-center gap-8">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs text-blue-400 opacity-80">Dash</span>
+                                            <span className="text-xs text-blue-400 opacity-80 font-bold tracking-wider">DASH</span>
                                             <div className="w-24 h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
                                                 <div className="h-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] transition-all duration-100" style={{ width: `${Math.max(0, (1 - dashCooldown) * 100)}%` }} />
                                             </div>
                                             <Wind className={`w-4 h-4 ${dashCooldown > 0 ? 'text-gray-500' : 'text-blue-400'}`} />
                                         </div>
-
-                                        <div className="flex gap-3 mt-2 pointer-events-auto">
-                                            <button onClick={toggleAutoFire} className={`flex items-center gap-1 font-bold text-[10px] px-2 py-1 rounded border transition-all hover:scale-105 ${hudAutoFire ? 'bg-green-600/50 border-green-400 text-green-300 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-gray-800/50 border-gray-600 text-gray-500'}`}>
-                                                <Crosshair className="w-3 h-3" /> {hudAutoFire ? 'AUTO: ON' : 'AUTO: OFF'}
-                                            </button>
+                                        <div className="flex items-center gap-1 text-red-500 text-xl font-bold drops-shadow-md">
+                                            <Heart className="w-6 h-6 fill-current" /> <span className="text-2xl">x{hudLives}</span>
                                         </div>
                                     </div>
 
-                                    <div className="flex flex-col items-end gap-2">
-                                        <div className="flex items-center gap-1 text-red-500 text-xl font-bold drops-shadow-md">
-                                            <Heart className="w-6 h-6 fill-current" /> x{hudLives}
-                                        </div>
+                                    {/* ROW 2: Control Buttons (Equal Size & Spacing) */}
+                                    <div className="grid grid-cols-4 gap-3">
+                                        {/* Button 1: Auto Fire */}
+                                        <button onClick={toggleAutoFire} title="Auto Fire" className={`w-14 h-10 flex flex-col items-center justify-center rounded border transition-all hover:scale-105 active:scale-95 ${hudAutoFire ? 'bg-green-600/50 border-green-400 text-green-300 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-gray-800/50 border-gray-600 text-gray-500'}`}>
+                                            <Crosshair className="w-4 h-4 mb-[2px]" />
+                                            <span className="text-[9px] font-bold leading-none">AUTO</span>
+                                        </button>
 
-                                        <div className="flex gap-2 pointer-events-auto">
-                                            <button className="p-2 bg-blue-900/30 hover:bg-blue-600/50 rounded-full transition border border-blue-500/30 backdrop-blur-sm group" onClick={togglePause}>
-                                                {gameState === 'paused' ? <Play className="w-4 h-4 text-white group-hover:scale-110 transition" /> : <Pause className="w-4 h-4 text-white group-hover:scale-110 transition" />}
-                                            </button>
-                                            <button className="p-2 bg-blue-900/30 hover:bg-blue-600/50 rounded-full transition border border-blue-500/30 backdrop-blur-sm group" onClick={toggleMute}>
-                                                {isMuted ? <VolumeX className="w-4 h-4 text-red-400 group-hover:scale-110 transition" /> : <Volume2 className="w-4 h-4 text-blue-400 group-hover:scale-110 transition" />}
-                                            </button>
-                                        </div>
+                                        {/* Button 2: Hard Mode */}
+                                        <button onClick={handleHardModeClick} title="Hard Mode" className={`w-14 h-10 flex flex-col items-center justify-center rounded border transition-all hover:scale-105 active:scale-95 ${isHardMode ? 'bg-red-600/50 border-red-400 text-red-300 shadow-[0_0_10px_rgba(220,38,38,0.3)]' : 'bg-gray-800/50 border-gray-600 text-gray-500'}`}>
+                                            <span className="text-xs font-bold leading-none">HARD</span>
+                                        </button>
+
+                                        {/* Button 3: Mute */}
+                                        <button onClick={toggleMute} title="Mute Audio" className={`w-14 h-10 flex items-center justify-center rounded border transition-all hover:scale-105 active:scale-95 ${isMuted ? 'bg-red-900/30 border-red-500/50 text-red-400' : 'bg-gray-800/50 border-gray-600 text-gray-500'}`}>
+                                            {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                                        </button>
+
+                                        {/* Button 4: Pause */}
+                                        <button onClick={togglePause} title="Pause Game" className="w-14 h-10 flex items-center justify-center rounded border transition-all hover:scale-105 active:scale-95 bg-blue-900/30 border-blue-500/30 text-blue-400 hover:bg-blue-600/50 hover:text-white">
+                                            {gameState === 'paused' ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -1714,7 +1924,7 @@
 
                             <div className="flex gap-4">
                                 <button onClick={togglePause} className="px-6 py-2 bg-blue-600 rounded hover:bg-blue-500 font-bold transition">RESUME</button>
-                                <button onClick={() => setGameState('start')} className="px-6 py-2 bg-gray-700 rounded hover:bg-gray-600 font-bold transition flex items-center gap-2">
+                                <button onClick={handleAbort} className="px-6 py-2 bg-gray-700 rounded hover:bg-gray-600 font-bold transition flex items-center gap-2">
                                     <RotateCcw className="w-4 h-4" /> ABORT
                                 </button>
                             </div>
