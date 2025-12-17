@@ -38,8 +38,8 @@ That's it! The game runs completely offline.
 | **Auto-Fire** | `F` | Toggle automatic shooting |
 | **Pause** | `P` | Pause the mission |
 | **Missiles** | `M` (when acquired) | Fire auto-targeting missiles |
-
-*> Tip: Use the on-screen "HARD" button to toggle Hard Mode for extra challenge!*
+| **Hard Mode** | *(UI Button)* | Toggle 4x Boss HP Challenge |
+| **Mute Audio** | *(UI Button)* | Toggle Sound Effects/Music |
 
 ## 🏆 Scoring
 
