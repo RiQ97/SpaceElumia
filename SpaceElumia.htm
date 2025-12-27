@@ -60,6 +60,52 @@
         .animate-float {
             animation: float 3s ease-in-out infinite;
         }
+
+        /* Responsive Pause Menu */
+        .pause-panel {
+            width: min(90vw, 420px);
+            padding: clamp(16px, 3vw, 24px);
+            background-color: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(4px);
+            border: 1px solid #1f2937;
+            border-radius: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            pointer-events: auto;
+        }
+
+        .pause-title {
+            font-family: 'Orbitron', sans-serif;
+            color: #facc15;
+            font-size: clamp(20px, 4vw, 32px);
+            margin-bottom: clamp(16px, 3vw, 32px);
+            text-align: center;
+        }
+
+        @media (max-width: 420px) {
+            .pause-panel {
+                width: 95vw;
+                padding: 16px;
+            }
+        }
+
+        /* Level Indicator Fix */
+        .level-indicator {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+
+        .level-indicator .current,
+        .level-indicator .total {
+            font-size: clamp(18px, 5vw, 26px);
+        }
+
+        .level-indicator .slash {
+            opacity: 0.6;
+        }
     </style>
 </head>
 
@@ -321,7 +367,8 @@
                     hasMissiles: false, autoFire: false
                 },
                 enemies: [], bullets: [], particles: [], powerups: [],
-                floatingTexts: [], stars: [], keys: {}
+                floatingTexts: [], stars: [], keys: {},
+                touch: { active: false, x: 0, y: 0 }
             });
 
             const lastHpRef = useRef(100);
@@ -403,6 +450,14 @@
                 const s = state.current;
                 s.bossActive = true;
                 s.enemies = [];
+
+                // Smooth Enemy Transition: Explode all existing enemies
+                s.enemies.forEach(e => {
+                    for (let k = 0; k < 8; k++) addParticles(e.x + (Math.random() - 0.5) * 20, e.y + (Math.random() - 0.5) * 20, '#ff5500', 5);
+                });
+                if (s.enemies.length > 0) playSound('explosion');
+                s.enemies = [];
+                s.bullets = []; // Clear bullets too
 
                 const baseHp = s.level === 1 ? 80 : 150;
                 const multiplier = isHardMode ? 4 : 1;
@@ -581,10 +636,39 @@
                 const currentMaxSpeed = isDashing ? DASH_SPEED : MAX_SPEED;
 
                 // Apply Acceleration
-                if (s.keys['ArrowUp'] || s.keys['w']) s.player.vy -= ACCEL;
-                if (s.keys['ArrowDown'] || s.keys['s']) s.player.vy += ACCEL;
-                if (s.keys['ArrowLeft'] || s.keys['a']) s.player.vx -= ACCEL;
-                if (s.keys['ArrowRight'] || s.keys['d']) s.player.vx += ACCEL;
+                let dirX = 0;
+                let dirY = 0;
+
+                if (s.keys['ArrowUp'] || s.keys['w']) dirY -= 1;
+                if (s.keys['ArrowDown'] || s.keys['s']) dirY += 1;
+                if (s.keys['ArrowLeft'] || s.keys['a']) dirX -= 1;
+                if (s.keys['ArrowRight'] || s.keys['d']) dirX += 1;
+
+                // Touch Input (Follow Mode)
+                if (s.touch.active) {
+                    const dx = s.touch.x - s.player.x;
+                    const dy = s.touch.y - s.player.y;
+                    const dist = Math.hypot(dx, dy);
+                    const deadzone = 10; // Pixels
+
+                    if (dist > deadzone) {
+                        // Normalize and apply accel towards target
+                        dirX = (dx / dist);
+                        dirY = (dy / dist);
+
+                        // Boost acceleration for touch to feel responsive
+                        s.player.vx += dirX * (ACCEL * 1.5);
+                        s.player.vy += dirY * (ACCEL * 1.5);
+                    } else {
+                        // Dampen when close to stop jitter
+                        s.player.vx *= 0.8;
+                        s.player.vy *= 0.8;
+                    }
+                } else {
+                    // Keyboard input normal accel
+                    s.player.vx += dirX * ACCEL;
+                    s.player.vy += dirY * ACCEL;
+                }
 
                 // Apply Friction
                 s.player.vx *= FRICTION;
@@ -684,13 +768,13 @@
                     }
                 }
 
-                if (s.keys['f'] || s.keys['F']) {
-                    if (!s.keys['f_lock']) {
+                if (s.keys['e'] || s.keys['E']) {
+                    if (!s.keys['e_lock']) {
                         toggleAutoFire();
-                        s.keys['f_lock'] = true;
+                        s.keys['e_lock'] = true;
                     }
                 } else {
-                    s.keys['f_lock'] = false;
+                    s.keys['e_lock'] = false;
                 }
 
                 if (s.player.invincibleTimer > 0) s.player.invincibleTimer--;
@@ -1712,13 +1796,21 @@
 
             useEffect(() => {
                 const handleKeyDown = (e) => {
+                    const k = e.key.toLowerCase();
                     state.current.keys[e.key] = true;
-                    if (e.key.toLowerCase() === 'p') togglePause();
+                    state.current.keys[k] = true; // Ensure lowercase key is also set
+
+                    if (k === 'p') togglePause();
+                    if (k === 'f') toggleFullScreen();
+                    if (k === 'm') toggleMute();
                 };
-                const handleKeyUp = (e) => state.current.keys[e.key] = false;
+                const handleKeyUp = (e) => {
+                    state.current.keys[e.key] = false;
+                    state.current.keys[e.key.toLowerCase()] = false;
+                };
                 window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
                 return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
-            }, [gameState, togglePause]);
+            }, [gameState, togglePause, toggleFullScreen, toggleMute]);
 
             useEffect(() => {
                 let animationFrameId;
@@ -1763,6 +1855,34 @@
                                 </h2>
                             </div>
                         </div>
+                    )}
+
+                    {/* Touch Controls (Universal "Follow" Mode) */}
+                    {(gameState === 'playing') && (
+                        <>
+                            {/* Full Screen Steering Zone */}
+                            <div
+                                className="absolute inset-0 z-30 touch-none"
+                                onTouchStart={(e) => {
+                                    // Identify the steering touch (first one that isn't on a button)
+                                    // For simplicity, we just take the first changed touch if not handled by buttons
+                                    const t = e.changedTouches[0];
+                                    state.current.touch.active = true;
+                                    state.current.touch.x = t.clientX;
+                                    state.current.touch.y = t.clientY;
+                                }}
+                                onTouchMove={(e) => {
+                                    if (state.current.touch.active) {
+                                        const t = e.changedTouches[0];
+                                        state.current.touch.x = t.clientX;
+                                        state.current.touch.y = t.clientY;
+                                    }
+                                }}
+                                onTouchEnd={(e) => {
+                                    state.current.touch.active = false;
+                                }}
+                            />
+                        </>
                     )}
 
                     {/* HUD */}
@@ -1872,7 +1992,7 @@
                                 ) : (
                                     <div className="w-full opacity-70 hover:opacity-100 transition-opacity duration-300">
                                         <div className="flex justify-between text-xs text-cyan-400 mb-2 font-bold tracking-widest uppercase">
-                                            <div className="flex items-center gap-2"><MapPin className="w-4 h-4 animate-bounce" /> Distance to Target</div>
+                                            <div className="flex items-center gap-2"><MapPin className="w-4 h-4 animate-bounce" /> Distance to Boss</div>
                                             <span>{Math.floor(bossProgress)}%</span>
                                         </div>
                                         <div className="w-full h-3 bg-gray-900/80 border border-cyan-900/50 rounded-full overflow-hidden backdrop-blur-sm p-[1px]">
@@ -1892,7 +2012,7 @@
                             <h1 className="text-6xl font-['Orbitron'] font-bold text-transparent bg-clip-text bg-gradient-to-b from-blue-400 to-purple-600 mb-2 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]">
                                 SPACE ELUMIA
                             </h1>
-                            <p className="text-gray-400 mb-8 font-['Share_Tech_Mono'] tracking-widest">COMPACT</p>
+                            <p className="text-gray-400 mb-8 font-['Share_Tech_Mono'] tracking-widest">REMASTERED</p>
                             <div className="flex gap-8 text-sm text-gray-400 mb-8 font-['Share_Tech_Mono']">
                                 <div className="flex flex-col items-center"><div className="flex gap-1 mb-1"><kbd className="px-2 py-1 bg-gray-800 rounded border border-gray-600">W</kbd><kbd className="px-2 py-1 bg-gray-800 rounded border border-gray-600">A</kbd><kbd className="px-2 py-1 bg-gray-800 rounded border border-gray-600">S</kbd><kbd className="px-2 py-1 bg-gray-800 rounded border border-gray-600">D</kbd></div><span>MOVE</span></div>
                                 <div className="flex flex-col items-center"><kbd className="px-8 py-1 bg-gray-800 rounded border border-gray-600 mb-1">SPACE</kbd><span>SHOOT</span></div>
@@ -1938,11 +2058,10 @@
                                 <div>
                                     <h3 className="text-blue-400 font-bold mb-4 border-b border-blue-500/30 pb-2">CONTROLS</h3>
                                     <div className="space-y-2 text-sm">
-                                        <div className="flex justify-between w-48"><span>MOVEMENT</span> <span className="text-white">WASD / Arrows</span></div>
-                                        <div className="flex justify-between w-48"><span>FIRE</span> <span className="text-white">SPACE</span></div>
-                                        <div className="flex justify-between w-48"><span>DASH</span> <span className="text-white">SHIFT</span></div>
-                                        <div className="flex justify-between w-48"><span>AUTO-FIRE</span> <span className="text-white">F</span></div>
-                                        <div className="flex justify-between w-48"><span>PAUSE</span> <span className="text-white">P</span></div>
+                                        <div className="flex justify-between gap-2"><span>MOVEMENT</span> <span className="text-white text-right">WASD</span></div>
+                                        <div className="flex justify-between gap-2"><span>FIRE</span> <span className="text-white text-right">SPACE</span></div>
+                                        <div className="flex justify-between gap-2"><span>DASH</span> <span className="text-white text-right">SHIFT</span></div>
+                                        <div className="flex justify-between gap-2"><span>AUTO-FIRE</span> <span className="text-white text-right">E</span></div>
                                     </div>
                                 </div>
                                 <div>
