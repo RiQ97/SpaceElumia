@@ -79,6 +79,8 @@
         const Play = (props) => <IconBase d={<polygon points="5 3 19 12 5 21 5 3"></polygon>} {...props} />;
         const Pause = (props) => <IconBase d={<><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></>} {...props} />;
         const RotateCcw = (props) => <IconBase d={<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>} {...props} ><path d="M3 3v5h5"></path></IconBase>; // Modified base for extra paths
+        const Maximize = (props) => <IconBase d={<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>} {...props} />;
+        const Minimize = (props) => <IconBase d={<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>} {...props} />;
         const Shield = (props) => <IconBase d={<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>} {...props} />;
         const Zap = (props) => <IconBase d={<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>} {...props} />;
         const Heart = (props) => <IconBase d={<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>} {...props} />;
@@ -274,6 +276,38 @@
             const [leaderboard, setLeaderboard] = useState([]);
             const [showLeaderboard, setShowLeaderboard] = useState(false);
             const [pendingHardMode, setPendingHardMode] = useState(null);
+            const [isFullscreen, setIsFullscreen] = useState(false);
+
+            useEffect(() => {
+                const handleFullscreenChange = () => {
+                    setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement));
+                };
+
+                ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(
+                    event => document.addEventListener(event, handleFullscreenChange)
+                );
+
+                return () => {
+                    ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(
+                        event => document.removeEventListener(event, handleFullscreenChange)
+                    );
+                };
+            }, []);
+
+            const toggleFullScreen = () => {
+                const doc = document.documentElement;
+                if (!isFullscreen) {
+                    if (doc.requestFullscreen) doc.requestFullscreen();
+                    else if (doc.webkitRequestFullscreen) doc.webkitRequestFullscreen();
+                    else if (doc.mozRequestFullScreen) doc.mozRequestFullScreen();
+                    else if (doc.msRequestFullscreen) doc.msRequestFullscreen();
+                } else {
+                    if (document.exitFullscreen) document.exitFullscreen();
+                    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                    else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+                    else if (document.msExitFullscreen) document.msExitFullscreen();
+                }
+            };
 
             // Mutable game state
             const state = useRef({
@@ -1304,7 +1338,7 @@
 
                         } else {
                             // Phase 4: THE SERAPHIM (Celestial Construct)
-                            
+
                             // CHARGE EFFECT
                             if (e.isCharging) {
                                 ctx.save();
@@ -1313,7 +1347,7 @@
                                 ctx.lineWidth = 3;
                                 // Imploding Lines (Scaled 2.5x)
                                 for (let k = 0; k < 12; k++) {
-                                    const dist = 150 + (Math.sin(s.frames * 0.5 + k) * 50); 
+                                    const dist = 150 + (Math.sin(s.frames * 0.5 + k) * 50);
                                     const ang = (Math.PI * 2 / 12) * k - s.frames * 0.1;
                                     ctx.beginPath();
                                     ctx.moveTo(Math.cos(ang) * dist, Math.sin(ang) * dist);
@@ -1332,14 +1366,14 @@
                             ctx.strokeStyle = '#fcd34d'; ctx.lineWidth = 6;
                             for (let i = 0; i < 3; i++) {
                                 ctx.beginPath();
-                                ctx.ellipse(0, 0, 150 - i * 25, 50 + Math.sin(s.frames * ringSpeed + i) * 25, s.frames * (ringSpeed/2) * (i % 2 == 0 ? 1 : -1), 0, Math.PI * 2);
+                                ctx.ellipse(0, 0, 150 - i * 25, 50 + Math.sin(s.frames * ringSpeed + i) * 25, s.frames * (ringSpeed / 2) * (i % 2 == 0 ? 1 : -1), 0, Math.PI * 2);
                                 ctx.stroke();
                             }
                             ctx.restore();
 
                             // Central Core (Scaled 2.5x)
                             ctx.fillStyle = e.isCharging ? '#fff' : '#fff';
-                            ctx.shadowColor = e.isCharging ? '#ffffff' : '#fbbf24'; 
+                            ctx.shadowColor = e.isCharging ? '#ffffff' : '#fbbf24';
                             ctx.shadowBlur = e.isCharging ? 100 + Math.random() * 40 : 60;
                             ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.fill();
 
@@ -1926,6 +1960,10 @@
                                 <button onClick={togglePause} className="px-6 py-2 bg-blue-600 rounded hover:bg-blue-500 font-bold transition">RESUME</button>
                                 <button onClick={handleAbort} className="px-6 py-2 bg-gray-700 rounded hover:bg-gray-600 font-bold transition flex items-center gap-2">
                                     <RotateCcw className="w-4 h-4" /> ABORT
+                                </button>
+                                <button onClick={toggleFullScreen} className="px-6 py-2 bg-gray-700 rounded hover:bg-gray-600 font-bold transition flex items-center gap-2 border border-gray-600">
+                                    {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                                    {isFullscreen ? 'EXIT FULL' : 'FULL SCREEN'}
                                 </button>
                             </div>
                         </div>
