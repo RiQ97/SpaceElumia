@@ -30,16 +30,18 @@ That's it! The game runs completely offline.
 
 ## 🕹️ Controls
 
-| Action | Key(s) | Description |
-| :--- | :--- | :--- |
 | **Move** | `W` `A` `S` `D` / Arrows | Pilot your ship |
 | **Shoot** | `Space` | Fire main weapons |
 | **Dash** | `Shift` | High-speed dodge (Invincible) |
-| **Auto-Fire** | `F` | Toggle automatic shooting |
+| **Auto-Fire** | `E` | Toggle automatic shooting |
+| **Full Screen** | `F` | Toggle Full Screen Mode |
+| **Mute Audio** | `M` | Toggle Sound Effects/Music |
 | **Pause** | `P` | Pause the mission |
-| **Missiles** | `M` (when acquired) | Fire auto-targeting missiles |
-| **Hard Mode** | *(UI Button)* | Toggle 4x Boss HP Challenge |
-| **Mute Audio** | *(UI Button)* | Toggle Sound Effects/Music |
+
+### 📱 Mobile / Touch Controls
+*   **Move**: Touch and drag anywhere on the screen. The ship will follow your finger smoothly.
+*   **Shoot**: Auto-fire is enabled by default. Use the **AUTO** button in the HUD to toggle.
+
 
 ## 🏆 Scoring
 
