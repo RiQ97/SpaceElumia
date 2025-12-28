@@ -145,6 +145,7 @@
         let actx = null;
         let masterGain = null;
         let isAudioMuted = false; // Renamed to avoid confusion with React state
+        let duckingEndTime = 0;
 
         const initAudio = () => {
             if (actx) return;
@@ -162,9 +163,125 @@
             }
         };
 
+        // --- Realistic Thunder Generators (coding by R i t i k R a j) ---
+        const createColoredNoiseBuffer = (sec = 8) => {
+            if (!actx) return null;
+            const s = actx.sampleRate;
+            const b = actx.createBuffer(2, s * sec, s);
+            for (let ch = 0; ch < 2; ch++) {
+                const d = b.getChannelData(ch);
+                let last = 0;
+                for (let i = 0; i < d.length; i++) {
+                    const w = Math.random() * 2 - 1;
+                    last = (last + 0.02 * w) / 1.02;
+                    d[i] = last * 3.5;
+                }
+            }
+            return b;
+        };
+
+        const thunderCrackLayer = (t) => {
+            const buffer = createColoredNoiseBuffer(1);
+            if (!buffer) return;
+            const src = actx.createBufferSource();
+            src.buffer = buffer;
+            const hp = actx.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = 2500;
+            const gain = actx.createGain();
+            gain.gain.setValueAtTime(0.8, t);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+            src.connect(hp).connect(gain).connect(masterGain);
+            src.start(t);
+        };
+
+        const thunderShockwave = (t) => {
+            const osc = actx.createOscillator();
+            const gain = actx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(45, t);
+            osc.frequency.exponentialRampToValueAtTime(20, t + 1);
+            gain.gain.setValueAtTime(0.9, t);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+            osc.connect(gain).connect(masterGain);
+            osc.start(t);
+            osc.stop(t + 3);
+        };
+
+        const thunderRumble = (t) => {
+            const buffer = createColoredNoiseBuffer(12);
+            if (!buffer) return;
+            const src = actx.createBufferSource();
+            src.buffer = buffer;
+            const lp = actx.createBiquadFilter();
+            lp.type = "lowpass";
+            lp.frequency.value = 180;
+            const gain = actx.createGain();
+            gain.gain.setValueAtTime(0.0001, t);
+            gain.gain.exponentialRampToValueAtTime(0.7, t + 1.2);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 3.5);
+
+            src.connect(lp);
+            if (actx.createStereoPanner) {
+                const widener = actx.createStereoPanner();
+                widener.pan.value = (Math.random() * 2 - 1) * 0.6;
+                lp.connect(widener).connect(gain);
+            } else {
+                lp.connect(gain);
+            }
+
+            gain.connect(masterGain);
+            src.start(t);
+            src.stop(t + 4.0);
+        };
+
+        const thunderEcho = (t) => {
+            const buffer = createColoredNoiseBuffer(6);
+            if (!buffer) return;
+            const delay = actx.createDelay(3.0);
+            delay.delayTime.value = 0.4 + Math.random() * 0.4;
+            const fb = actx.createGain();
+            fb.gain.value = 0.25;
+            const noise = actx.createBufferSource();
+            noise.buffer = buffer;
+            const hp = actx.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = 800;
+            const gain = actx.createGain();
+            gain.gain.value = 0.2;
+            noise.connect(hp).connect(delay).connect(fb).connect(delay);
+            delay.connect(gain).connect(masterGain);
+            noise.start(t + 0.4);
+            noise.stop(t + 4);
+        };
+
+        const thunderAirWhoosh = (t) => {
+            const buffer = createColoredNoiseBuffer(2);
+            if (!buffer) return;
+            const src = actx.createBufferSource();
+            src.buffer = buffer;
+            const band = actx.createBiquadFilter();
+            band.type = "bandpass";
+            band.frequency.value = 900;
+            band.Q.value = 1;
+            const gain = actx.createGain();
+            gain.gain.setValueAtTime(0.0001, t);
+            gain.gain.exponentialRampToValueAtTime(0.4, t + 0.15);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+            src.connect(band).connect(gain).connect(masterGain);
+            src.start(t);
+            src.stop(t + 2);
+        };
+
         const playSound = (type) => {
             if (!actx || !masterGain || isAudioMuted) return;
             const t = actx.currentTime;
+
+            // CHECK DUCKING
+            if (duckingEndTime > t && type !== 'beam_thunder') {
+                return; // Muted by Boss Attack
+            }
+
             const osc = actx.createOscillator();
             const gain = actx.createGain();
             gain.connect(masterGain);
@@ -265,6 +382,20 @@
                     gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
                     osc.start(t);
                     osc.stop(t + 0.4);
+                    break;
+                case 'beam_thunder':
+                    // TRIGGER DUCKING for 3.5 Seconds (Matches Beam Duration)
+                    duckingEndTime = t + 3.5;
+
+                    // ULTRA-REALISTIC THUNDER (coding by R i t i k R a j)
+                    // const offset = Math.random() * 0.5; // Removed random delay
+                    const offset = 0;
+
+                    thunderCrackLayer(t + offset);          // Instant crack
+                    thunderAirWhoosh(t + offset);           // Pressure ripple
+                    thunderShockwave(t + offset + 0.1);     // Bass shock hit (Tightened timing)
+                    thunderRumble(t + offset + 0.2);        // Rolling thunder tail
+                    thunderEcho(t + offset + 0.5);          // Faint sky echo
                     break;
             }
         };
@@ -1039,7 +1170,7 @@
                             if (!e.isCharging && !e.isFiring && e.attackTimer % 600 === 0) {
                                 e.isCharging = true;
                                 e.chargeTimer = 90; // 1.5 Seconds Channeling
-                                playSound('boss_spawn'); // Buildup sound
+                                // playSound('boss_spawn'); // Sound Removed
                             }
 
                             // 2. Charging State
@@ -1051,13 +1182,15 @@
                                     e.fireTimer = 180; // 3 Seconds Firing
 
                                     // Spawn Massive Beam
+                                    // Hitbox centered at boss x-1500 to cover area
                                     s.bullets.push({
-                                        x: e.x - 3000, y: e.y, w: 3000, h: 40, // Increased width to 3000 to ensure coverage
+                                        x: e.x - 1500, y: e.y, w: 3000, h: 40,
                                         vx: 0, vy: 0,
-                                        owner: 'enemy', damage: 30, ttl: 180, // Match fireTimer
+                                        owner: 'enemy', damage: 30, ttl: 180,
                                         isBeam: true
                                     });
-                                    playSound('explosion');
+                                    // playSound('explosion'); // Removed
+                                    playSound('beam_thunder'); // New Synced Sound
                                 }
                             }
 
@@ -1092,12 +1225,17 @@
                         playSound('shoot');
                     }
 
-                    if (s.player.invincibleTimer <= 0 && checkCollision(s.player, e)) {
-                        s.player.hp -= 20;
-                        s.player.invincibleTimer = 60;
-                        s.shake = 10;
-                        playSound('hit');
-                        addParticles(s.player.x, s.player.y, '#ff0000', 10);
+                    if (checkCollision(s.player, e)) {
+                        // Fix: Don't destroy beams here (handled separately by damage tick)
+                        if (e.isBeam) {
+                            // Hit handled in separate loop or check
+                        } else if (s.player.invincibleTimer <= 0) {
+                            s.player.hp -= 20;
+                            s.player.invincibleTimer = 60;
+                            s.shake = 10;
+                            playSound('hit');
+                            addParticles(s.player.x, s.player.y, '#ff0000', 10);
+                        }
                     }
 
                     if (e.x < -150) s.enemies.splice(i, 1);
