@@ -724,17 +724,17 @@
                     } else if (s.player.weaponLevel === 3) { // Laser
                         s.bullets.push({
                             x: s.player.x + 20, y: s.player.y, w: 40, h: 6,
-                            vx: laserSpeed, vy: 0, owner: 'player', damage: 4, isLaser: true, ttl: 100
+                            vx: laserSpeed, vy: 0, owner: 'player', damage: 4, isLaser: true, ttl: 100, hitIds: []
                         });
                     } else if (s.player.weaponLevel === 4) { // Wave
                         s.bullets.push({
                             x: s.player.x + 20, y: s.player.y, w: 16, h: 8,
-                            vx: bulletSpeed, vy: 0, owner: 'player', damage: 2, isWave: true, ttl: 100, initialY: s.player.y
+                            vx: bulletSpeed, vy: 0, owner: 'player', damage: 2, isWave: true, ttl: 100, initialY: s.player.y, hitIds: []
                         });
                     } else if (s.player.weaponLevel === 5) { // Plasma
                         s.bullets.push({
                             x: s.player.x + 20, y: s.player.y, w: 20, h: 20,
-                            vx: 12, vy: 0, owner: 'player', damage: 6, isPlasma: true, ttl: 100
+                            vx: 12, vy: 0, owner: 'player', damage: 6, isPlasma: true, ttl: 200, hitIds: []
                         });
                     } else { // Normal & Rapid
                         s.bullets.push({
@@ -857,6 +857,9 @@
                         for (let j = s.enemies.length - 1; j >= 0; j--) {
                             const e = s.enemies[j];
                             if (checkCollision(b, e)) {
+                                if (b.hitIds && b.hitIds.includes(e.id)) continue; // Skip if already hit
+                                if (b.hitIds) b.hitIds.push(e.id); // Add to hit list
+
                                 hit = true;
                                 e.hp -= b.damage;
                                 addParticles(b.x, b.y, '#ffff00', 3);
@@ -1049,7 +1052,7 @@
 
                                     // Spawn Massive Beam
                                     s.bullets.push({
-                                        x: e.x - 2000, y: e.y, w: 2000, h: 40,
+                                        x: e.x - 3000, y: e.y, w: 3000, h: 40, // Increased width to 3000 to ensure coverage
                                         vx: 0, vy: 0,
                                         owner: 'enemy', damage: 30, ttl: 180, // Match fireTimer
                                         isBeam: true
@@ -1170,6 +1173,7 @@
                         s.bullets = [];
                         playSound('explosion');
                     } else {
+                        setHudLives(0); // Visual fix for Game Over
                         setGameState('gameover');
                     }
                 }
