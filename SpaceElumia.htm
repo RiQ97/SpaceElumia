@@ -147,6 +147,14 @@
         let isAudioMuted = false; // Renamed to avoid confusion with React state
         let duckingEndTime = 0;
 
+        const generateThunderBuffers = () => {
+            if (!actx || audioBuffers.thunder1) return;
+            audioBuffers.thunder1 = createColoredNoiseBuffer(1);
+            audioBuffers.thunder2 = createColoredNoiseBuffer(12); // Long rumble
+            audioBuffers.thunder3 = createColoredNoiseBuffer(6);  // Echo
+            audioBuffers.thunder4 = createColoredNoiseBuffer(2);  // Whoosh
+        };
+
         const initAudio = () => {
             if (actx) return;
             const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -154,6 +162,7 @@
             masterGain = actx.createGain();
             masterGain.gain.value = 0.3;
             masterGain.connect(actx.destination);
+            generateThunderBuffers(); // Pre-generate on init
         };
 
         const setMuteAudio = (mute) => {
@@ -181,7 +190,7 @@
         };
 
         const thunderCrackLayer = (t) => {
-            const buffer = createColoredNoiseBuffer(1);
+            const buffer = audioBuffers.thunder1;
             if (!buffer) return;
             const src = actx.createBufferSource();
             src.buffer = buffer;
@@ -209,7 +218,7 @@
         };
 
         const thunderRumble = (t) => {
-            const buffer = createColoredNoiseBuffer(12);
+            const buffer = audioBuffers.thunder2;
             if (!buffer) return;
             const src = actx.createBufferSource();
             src.buffer = buffer;
@@ -236,7 +245,7 @@
         };
 
         const thunderEcho = (t) => {
-            const buffer = createColoredNoiseBuffer(6);
+            const buffer = audioBuffers.thunder3;
             if (!buffer) return;
             const delay = actx.createDelay(3.0);
             delay.delayTime.value = 0.4 + Math.random() * 0.4;
@@ -256,7 +265,7 @@
         };
 
         const thunderAirWhoosh = (t) => {
-            const buffer = createColoredNoiseBuffer(2);
+            const buffer = audioBuffers.thunder4;
             if (!buffer) return;
             const src = actx.createBufferSource();
             src.buffer = buffer;
@@ -267,10 +276,11 @@
             const gain = actx.createGain();
             gain.gain.setValueAtTime(0.0001, t);
             gain.gain.exponentialRampToValueAtTime(0.4, t + 0.15);
-            gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+            gain.gain.exponentialRampToValueAtTime(0.4, t + 0.15);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.2); // Original duration
             src.connect(band).connect(gain).connect(masterGain);
             src.start(t);
-            src.stop(t + 2);
+            src.stop(t + 2.0);
         };
 
         const playSound = (type) => {
@@ -383,19 +393,18 @@
                     osc.start(t);
                     osc.stop(t + 0.4);
                     break;
-                case 'beam_thunder':
+                case 'beam_charge': // NEW: Triggered at start of 1.5s Charge
+                    thunderAirWhoosh(t);           // Start: 0.0s (Duration 1.2s)
+                    thunderShockwave(t + 0.6);     // Start: 0.6s (Pre-tremor, overlaps into beam)
+                    break;
+                case 'beam_thunder': // Triggered at Fire (Impact)
                     // TRIGGER DUCKING for 3.5 Seconds (Matches Beam Duration)
                     duckingEndTime = t + 3.5;
 
-                    // ULTRA-REALISTIC THUNDER (coding by R i t i k R a j)
-                    // const offset = Math.random() * 0.5; // Removed random delay
-                    const offset = 0;
-
-                    thunderCrackLayer(t + offset);          // Instant crack
-                    thunderAirWhoosh(t + offset);           // Pressure ripple
-                    thunderShockwave(t + offset + 0.1);     // Bass shock hit (Tightened timing)
-                    thunderRumble(t + offset + 0.2);        // Rolling thunder tail
-                    thunderEcho(t + offset + 0.5);          // Faint sky echo
+                    thunderEcho(t);                // Start: 0.0s (INSTANT)
+                    thunderShockwave(t);           // Start: 0.0s (Main Impact)
+                    thunderRumble(t);              // Start: 0.0s (Sustain)
+                    thunderCrackLayer(t);          // Start: 0.0s (Snap)
                     break;
             }
         };
@@ -1036,7 +1045,7 @@
                                 break;
                             }
                         }
-                        if (hit && !b.isLaser && !b.isPlasma) b.ttl = 0;
+                        if (hit && !b.isLaser && !b.isPlasma && !b.isBeam) b.ttl = 0;
                     } else {
                         // Enemy bullet hitting player
                         if (s.player.invincibleTimer <= 0 && checkCollision(b, s.player)) {
@@ -1170,7 +1179,7 @@
                             if (!e.isCharging && !e.isFiring && e.attackTimer % 600 === 0) {
                                 e.isCharging = true;
                                 e.chargeTimer = 90; // 1.5 Seconds Channeling
-                                // playSound('boss_spawn'); // Sound Removed
+                                playSound('beam_charge'); // Sound Added: Crackle/Whoosh during charge
                             }
 
                             // 2. Charging State
@@ -1179,17 +1188,16 @@
                                 if (e.chargeTimer <= 0) {
                                     e.isCharging = false;
                                     e.isFiring = true;
-                                    e.fireTimer = 180; // 3 Seconds Firing
+                                    e.fireTimer = 300; // 5 Seconds Firing (Extended)
 
                                     // Spawn Massive Beam
                                     // Hitbox centered at boss x-1500 to cover area
                                     s.bullets.push({
                                         x: e.x - 1500, y: e.y, w: 3000, h: 40,
                                         vx: 0, vy: 0,
-                                        owner: 'enemy', damage: 30, ttl: 180,
+                                        owner: 'enemy', damage: 30, ttl: 300,
                                         isBeam: true
                                     });
-                                    // playSound('explosion'); // Removed
                                     playSound('beam_thunder'); // New Synced Sound
                                 }
                             }
@@ -1802,7 +1810,7 @@
 
                         // 2. Main Beam (Solid Gold)
                         ctx.fillStyle = 'rgba(255, 200, 0, 0.8)';
-                        ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 20;
+                        ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 0; // Performance Fix: Removed shadowBlur
                         ctx.fillRect(b.x, b.y - beamHeight / 2, b.w, beamHeight);
 
                         // 3. Core (White Hot Electric)
@@ -1810,6 +1818,37 @@
                         ctx.shadowBlur = 0;
                         const coreHeight = beamHeight * 0.3 + Math.random() * 4; // Electric flicker
                         ctx.fillRect(b.x, b.y - coreHeight / 2, b.w, coreHeight);
+
+                        // 4. Blue Electric Sparks (Added by Request)
+                        ctx.save();
+                        ctx.globalCompositeOperation = 'lighter';
+                        ctx.strokeStyle = '#00ffff';
+                        ctx.shadowColor = '#00ffff';
+                        ctx.shadowBlur = 10;
+                        ctx.lineWidth = 2;
+
+                        // Draw sporadic lightning lines along the beam
+                        const segments = 10;
+                        const step = b.w / segments;
+                        if (Math.random() < 0.8) { // Flicker effect
+                            ctx.beginPath();
+                            for (let i = 0; i < segments; i++) {
+                                const lx = b.x + i * step;
+                                const ly = b.y + (Math.random() - 0.5) * beamHeight * 3;
+                                if (i === 0) ctx.moveTo(lx, ly);
+                                else ctx.lineTo(lx, ly);
+                            }
+                            ctx.stroke();
+                        }
+
+                        // Spark Particles
+                        for (let k = 0; k < 5; k++) {
+                            const sx = b.x + Math.random() * b.w;
+                            const sy = b.y + (Math.random() - 0.5) * beamHeight * 4;
+                            ctx.fillStyle = '#e0f2fe';
+                            ctx.beginPath(); ctx.arc(sx, sy, Math.random() * 3, 0, Math.PI * 2); ctx.fill();
+                        }
+                        ctx.restore();
 
                         ctx.restore();
                         return; // Skip other rendering
