@@ -1052,7 +1052,7 @@
                         if (hit && !b.isLaser && !b.isPlasma && !b.isBeam) b.ttl = 0;
                     } else {
                         // Enemy bullet hitting player
-                        if (s.player.invincibleTimer <= 0 && checkCollision(b, s.player)) {
+                        if (s.player.invincibleTimer <= 0 && checkCollision(b, s.player) && !b.isBeam) {
                             s.player.hp -= b.damage;
                             s.player.invincibleTimer = 60;
                             s.shake = 10;
