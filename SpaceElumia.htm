@@ -146,6 +146,7 @@
         let masterGain = null;
         let isAudioMuted = false; // Renamed to avoid confusion with React state
         let duckingEndTime = 0;
+        let audioBuffers = {}; // FIX: Define audioBuffers container
 
         const generateThunderBuffers = () => {
             if (!actx || audioBuffers.thunder1) return;
@@ -263,6 +264,8 @@
             noise.start(t + 0.4);
             noise.stop(t + 4);
         };
+
+
 
         const thunderAirWhoosh = (t) => {
             const buffer = audioBuffers.thunder4;
@@ -541,6 +544,7 @@
 
             const startGame = () => {
                 initAudio();
+                if (actx && actx.state === 'suspended') actx.resume();
                 setMuteAudio(isMuted);
                 initStars();
 
@@ -1143,33 +1147,36 @@
                         // Boss Attack Timer & Patterns
                         if (!e.attackTimer) e.attackTimer = 0;
 
-                        if (e.attackTimer % 60 === 0) {
-                            s.bullets.push({ x: e.x - e.w / 2, y: e.y, w: 16, h: 16, vx: -8, vy: 0, owner: 'enemy', damage: 15, ttl: 200 });
-                            playSound('enemy_shoot');
-                        }
-
-                        if (s.level >= 2 && e.attackTimer % 180 === 0) {
-                            playSound('missile');
-                            s.bullets.push({ x: e.x, y: e.y - 30, w: 10, h: 10, vx: -2, vy: -5, owner: 'enemy', damage: 20, ttl: 300, isMissile: true });
-                            s.bullets.push({ x: e.x, y: e.y + 30, w: 10, h: 10, vx: -2, vy: 5, owner: 'enemy', damage: 20, ttl: 300, isMissile: true });
-                        }
-
-                        if (s.level >= 3 && e.attackTimer % 240 > 200 && e.attackTimer % 5 === 0) {
-                            const offset = (e.attackTimer % 240) - 200;
-                            const angle = Math.sin(offset * 0.1) * 0.5;
-                            s.bullets.push({
-                                x: e.x - 40, y: e.y, w: 8, h: 8,
-                                vx: Math.cos(angle + Math.PI) * 10, vy: Math.sin(angle) * 10,
-                                owner: 'enemy', damage: 10, ttl: 200
-                            });
-                        }
-
-                        if (s.level >= 4 && e.attackTimer % 400 === 0) {
-                            for (let k = 0; k < 12; k++) {
-                                const a = (Math.PI * 2 / 12) * k;
-                                s.bullets.push({ x: e.x, y: e.y, w: 8, h: 8, vx: Math.cos(a) * 6, vy: Math.sin(a) * 6, owner: 'enemy', damage: 12, ttl: 200 });
+                        // CRITICAL PERFORMANCE FIX: Suppress other attacks during Beam to save FPS
+                        if (!e.isCharging && !e.isFiring) {
+                            if (e.attackTimer % 60 === 0) {
+                                s.bullets.push({ x: e.x - e.w / 2, y: e.y, w: 16, h: 16, vx: -8, vy: 0, owner: 'enemy', damage: 15, ttl: 200 });
+                                playSound('enemy_shoot');
                             }
-                            playSound('explosion');
+
+                            if (s.level >= 2 && e.attackTimer % 180 === 0) {
+                                playSound('missile');
+                                s.bullets.push({ x: e.x, y: e.y - 30, w: 10, h: 10, vx: -2, vy: -5, owner: 'enemy', damage: 20, ttl: 300, isMissile: true });
+                                s.bullets.push({ x: e.x, y: e.y + 30, w: 10, h: 10, vx: -2, vy: 5, owner: 'enemy', damage: 20, ttl: 300, isMissile: true });
+                            }
+
+                            if (s.level >= 3 && e.attackTimer % 240 > 200 && e.attackTimer % 5 === 0) {
+                                const offset = (e.attackTimer % 240) - 200;
+                                const angle = Math.sin(offset * 0.1) * 0.5;
+                                s.bullets.push({
+                                    x: e.x - 40, y: e.y, w: 8, h: 8,
+                                    vx: Math.cos(angle + Math.PI) * 10, vy: Math.sin(angle) * 10,
+                                    owner: 'enemy', damage: 10, ttl: 200
+                                });
+                            }
+
+                            if (s.level >= 4 && e.attackTimer % 400 === 0) {
+                                for (let k = 0; k < 12; k++) {
+                                    const a = (Math.PI * 2 / 12) * k;
+                                    s.bullets.push({ x: e.x, y: e.y, w: 8, h: 8, vx: Math.cos(a) * 6, vy: Math.sin(a) * 6, owner: 'enemy', damage: 12, ttl: 200 });
+                                }
+                                playSound('explosion');
+                            }
                         }
 
                         if (s.level >= 5) {
@@ -1190,10 +1197,11 @@
                                     e.isFiring = true;
                                     e.fireTimer = 300; // 5 Seconds Firing (Extended)
 
-                                    // Spawn Massive Beam
-                                    // Hitbox centered at boss x-1500 to cover area
+                                    // Spawn Massive Beam (OPTIMIZED: Dynamic Width)
+                                    // Hitbox only needs to cover from Boss to the Left edge of screen
+                                    const beamWidth = e.x + 200; // Cover to X=0 plus margin
                                     s.bullets.push({
-                                        x: e.x - 1500, y: e.y, w: 3000, h: 40,
+                                        x: e.x - beamWidth, y: e.y, w: beamWidth, h: 40,
                                         vx: 0, vy: 0,
                                         owner: 'enemy', damage: 30, ttl: 300,
                                         isBeam: true
@@ -1819,29 +1827,38 @@
                         const coreHeight = beamHeight * 0.3 + Math.random() * 4; // Electric flicker
                         ctx.fillRect(b.x, b.y - coreHeight / 2, b.w, coreHeight);
 
-                        // 4. Blue Electric Sparks (Optimized Manual Glow)
+                        // 4. Blue Electric Sparks (Optimized - Manual Glow)
                         ctx.save();
                         ctx.globalCompositeOperation = 'lighter';
-                        // Performance: Using double-stroke instead of shadowBlur
+                        // shadowBlur removed for performance
 
                         // Draw sporadic lightning lines along the beam
-                        const segments = 10;
+                        const segments = 12; // Smoother sparks
                         const step = b.w / segments;
                         if (Math.random() < 0.8) { // Flicker effect
                             ctx.beginPath();
-                            for (let i = 0; i < segments; i++) {
+                            for (let i = 0; i <= segments; i++) {
                                 const lx = b.x + i * step;
-                                const ly = b.y + (Math.random() - 0.5) * beamHeight * 3;
+                                let ly;
+
+                                // FIX: Anchor the RIGHTMOST point (Boss Core) to the center
+                                // This ensures sparks originate from the boss mouth/orb
+                                if (i === segments) {
+                                    ly = b.y;
+                                } else {
+                                    ly = b.y + (Math.random() - 0.5) * beamHeight * 3;
+                                }
+
                                 if (i === 0) ctx.moveTo(lx, ly);
                                 else ctx.lineTo(lx, ly);
                             }
 
-                            // Pass 1: Glow (Thick, Cyan Transparent)
+                            // Pass 1: Glow (Thick, Transparent Cyan)
                             ctx.lineWidth = 6;
-                            ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+                            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
                             ctx.stroke();
 
-                            // Pass 2: Core (Thin, Pure Cyan)
+                            // Pass 2: Core (Thin, Bright Cyan)
                             ctx.lineWidth = 2;
                             ctx.strokeStyle = '#00ffff';
                             ctx.stroke();
@@ -1851,7 +1868,7 @@
                         for (let k = 0; k < 5; k++) {
                             const sx = b.x + Math.random() * b.w;
                             const sy = b.y + (Math.random() - 0.5) * beamHeight * 4;
-                            ctx.fillStyle = '#00ffff'; // Original Cyan
+                            ctx.fillStyle = '#e0f2fe';
                             ctx.beginPath(); ctx.arc(sx, sy, Math.random() * 3, 0, Math.PI * 2); ctx.fill();
                         }
                         ctx.restore();
